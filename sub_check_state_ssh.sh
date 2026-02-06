@@ -1,31 +1,19 @@
 #!/bin/bash
 
-HOST="$1"
-OUTFILE="outputs/${HOST}_BEFORE_$(date +%F_%H%M).txt"
+sshpass -e ssh "$HOST" "tmsh load sys config verify" 2>&1 \
+| tee "$LOGFILE" \
+| awk '
+    /^Error:/ { print; next }
+    /^there were warnings:/ { inwarn=1; next }
+    inwarn { print }
+'
 
-ssh -o LogLevel=ERROR root@"$HOST" <<'EOF' > "$OUTFILE" 2>&1
+RESULT=$(sshpass -e ssh "$HOST" "tmsh load sys config verify" 2>&1 | tee "$LOGFILE")
 
-echo "### SYSTEM"
-tmsh show sys version
-
-echo
-echo "### AFM POLICIES"
-tmsh list security firewall policy
-
-echo
-echo "### ASM POLICIES"
-tmsh list asm policy
-
-echo
-echo "### VIRTUAL SERVERS"
-tmsh show ltm virtual
-
-echo
-echo "### POOLS"
-tmsh show ltm pool
-
-echo
-echo "### POOL MEMBERS"
-tmsh show ltm pool members
-
-EOF
+if echo "$RESULT" | grep -q '^Error:'; then
+    echo "❌ Verification FAILED"
+elif echo "$RESULT" | grep -q '^there were warnings:'; then
+    echo "⚠ Verification OK with warnings"
+else
+    echo "✔ Verification OK"
+fi
